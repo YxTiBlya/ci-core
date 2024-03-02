@@ -7,17 +7,18 @@ import (
 	"syscall"
 	"time"
 
-	"go.uber.org/zap"
+	"github.com/YxTiBlya/ci-core/logger"
 )
 
 type Scheduler struct {
-	log        *zap.SugaredLogger // TODO: i do interface?
+	log        *logger.Logger
 	components []Component
 }
 
-func NewScheduler(logger *zap.SugaredLogger, components ...Component) *Scheduler {
-	sch := &Scheduler{}
-	sch.log = logger
+func NewScheduler(components ...Component) *Scheduler {
+	sch := &Scheduler{
+		log: logger.New("scheduler"),
+	}
 
 	cmps := make([]Component, len(components))
 	copy(cmps, components)
@@ -31,19 +32,19 @@ func (sch *Scheduler) Start() {
 	defer cancel()
 
 	for _, component := range sch.components {
-		sch.log.Infof("starting component %s", component.name)
+		sch.log.Info().Str("component", component.name).Msg("starting component")
 		if err := component.svc.Start(ctx); err != nil {
-			sch.log.Fatal("failed to start component ", component.name, zap.Error(err))
+			sch.log.Fatal().Err(err).Str("component", component.name).Msg("failed to start component")
 		}
 	}
 
 	select {
 	case <-ctx.Done():
-		sch.log.Fatal("failed to start components", zap.Error(ErrContextTimeout))
+		sch.log.Fatal().Err(ErrContextTimeout).Msg("failed to start components")
 	default:
 	}
 
-	sch.log.Info("all components is started")
+	sch.log.Info().Msg("all components is started")
 
 	sch.gracefulShutDown()
 }
@@ -54,9 +55,9 @@ func (sch *Scheduler) gracefulShutDown() {
 	defer signal.Stop(quitCh)
 
 	sig := <-quitCh
-	sch.log.Info("received signal", zap.Stringer("signal", sig))
+	sch.log.Info().Str("signal", sig.String()).Msg("received signal")
 	sch.stop()
-	sch.log.Info("graceful shutdown done")
+	sch.log.Info().Msg("graceful shutdown done")
 }
 
 func (sch *Scheduler) stop() {
@@ -65,13 +66,13 @@ func (sch *Scheduler) stop() {
 
 	for _, component := range sch.components {
 		if err := component.svc.Stop(ctx); err != nil {
-			sch.log.Error("failed to stop component", zap.String("component", component.name), zap.Error(err))
+			sch.log.Error().Err(err).Str("component", component.name).Msg("failed to stop component")
 		}
 	}
 
 	select {
 	case <-ctx.Done():
-		sch.log.Fatal("failed to stop components", zap.Error(ErrContextTimeout))
+		sch.log.Fatal().Err(ErrContextTimeout).Msg("failed to stop components")
 	default:
 	}
 }
